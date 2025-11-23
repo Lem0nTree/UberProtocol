@@ -31,7 +31,9 @@ export async function initDatabase() {
         selected_bid_id INTEGER,
         created_at TIMESTAMP DEFAULT NOW(),
         settled_at TIMESTAMP,
-        settlement_tx_hash VARCHAR(66)
+        settlement_tx_hash VARCHAR(66),
+        vault_address VARCHAR(42),
+        vault_data JSONB
       );
 
       CREATE INDEX IF NOT EXISTS idx_jobs_intent_hash ON jobs(intent_hash);

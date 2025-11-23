@@ -48,6 +48,12 @@ export const config = {
   relayer: {
     privateKey: process.env.RELAYER_PRIVATE_KEY || '',
   },
+
+  // Coinbase Configuration
+  coinbase: {
+    apiKeyName: process.env.COINBASE_API_KEY_NAME!,
+    apiPrivateKey: process.env.COINBASE_API_KEY_PRIVATE_KEY!,
+  },
 };
 
 // Validate required configuration
@@ -58,6 +64,8 @@ const requiredFields = [
   'IDENTITY_REGISTRY_ADDRESS',
   'REPUTATION_REGISTRY_ADDRESS',
   'DATABASE_URL',
+  'COINBASE_API_KEY_NAME',
+  'COINBASE_API_KEY_PRIVATE_KEY',
 ];
 
 for (const field of requiredFields) {

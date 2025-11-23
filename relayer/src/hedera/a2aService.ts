@@ -67,9 +67,9 @@ export class HederaA2AService {
   }
 
   /**
-   * Publish job to A2A topic
+   * Publish generic message to A2A topic
    */
-  async publishJob(message: A2AJobMessage): Promise<void> {
+  async publishMessage(message: A2AMessage): Promise<void> {
     try {
       if (!this.topicId) {
         throw new Error('A2A topic not initialized');
@@ -77,9 +77,9 @@ export class HederaA2AService {
 
       const messageString = JSON.stringify(message);
 
-      logger.info('Publishing job to A2A topic', {
+      logger.info('Publishing message to A2A topic', {
         topicId: this.topicId,
-        intentHash: message.data.intentHash,
+        type: message.type,
       });
 
       const submitTx = new TopicMessageSubmitTransaction({
@@ -90,15 +90,22 @@ export class HederaA2AService {
       const txResponse = await submitTx.execute(this.client);
       const receipt = await txResponse.getReceipt(this.client);
 
-      logger.info('Job published to A2A topic', {
+      logger.info('Message published to A2A topic', {
         topicId: this.topicId,
         status: receipt.status.toString(),
-        intentHash: message.data.intentHash,
+        type: message.type,
       });
     } catch (error) {
-      logger.error('Failed to publish job to A2A topic', error);
+      logger.error('Failed to publish message to A2A topic', error);
       throw error;
     }
+  }
+
+  /**
+   * Publish job to A2A topic
+   */
+  async publishJob(message: A2AJobMessage): Promise<void> {
+    return this.publishMessage(message);
   }
 
   /**
@@ -160,7 +167,7 @@ export class HederaA2AService {
 
 // A2A Message Types
 export interface A2AMessage {
-  type: 'JOB_POSTED' | 'BID_SUBMITTED';
+  type: 'JOB_POSTED' | 'BID_SUBMITTED' | 'VAULT_ACCESS_GRANTED';
   version: string;
   data: any;
 }
@@ -213,5 +220,16 @@ export interface A2ABidMessage extends A2AMessage {
   };
 }
 
-export default HederaA2AService;
+export interface A2AVaultAccessMessage extends A2AMessage {
+  type: 'VAULT_ACCESS_GRANTED';
+  data: {
+    intentHash: string;
+    agentId: number;
+    agentAddress: string;
+    vaultAddress: string;
+    vaultData: any; // Encrypted wallet export or similar
+    timestamp: number;
+  };
+}
 
+export default HederaA2AService;

@@ -2,6 +2,8 @@ import { ethers } from 'ethers';
 import config from '../config';
 import logger from '../utils/logger';
 import BidManager from '../managers/bidManager';
+import CDPService from '../coinbase/cdpService';
+import HederaA2AService from '../hedera/a2aService';
 
 const TASK_MANAGER_ABI = [
   'function settleJobWithAgent(tuple(bytes32 payloadHash, uint64 expiry, uint64 nonce, address agentId, bytes32 coordinationType, uint256 coordinationValue, address[] participants) intent, tuple(bytes32 intentHash, address participant, uint64 nonce, uint64 expiry, bytes32 conditionsHash, bytes signature) acc, address payable payoutAddress, uint256 amount, bytes32 logRootHash) external',
@@ -11,10 +13,14 @@ export class SettlementCoordinator {
   private provider: ethers.JsonRpcProvider;
   private taskManager: ethers.Contract;
   private bidManager: BidManager;
+  private cdpService: CDPService;
+  private hederaService: HederaA2AService;
 
-  constructor(bidManager: BidManager) {
+  constructor(bidManager: BidManager, cdpService: CDPService, hederaService: HederaA2AService) {
     this.provider = new ethers.JsonRpcProvider(config.base.rpc);
     this.bidManager = bidManager;
+    this.cdpService = cdpService;
+    this.hederaService = hederaService;
 
     // Initialize task manager contract
     if (config.relayer.privateKey) {
@@ -38,10 +44,48 @@ export class SettlementCoordinator {
   /**
    * Select winning bid
    */
-  async selectBid(intentHash: string, bidId: number): Promise<void> {
+  async selectBid(intentHash: string, bidId: number): Promise<string> {
     try {
+      // 1. Get Job and Bid details
+      const bids = await this.bidManager.getBidsByIntent(intentHash);
+      const bid = bids.find(b => b.id === bidId);
+      if (!bid) {
+        throw new Error('Bid not found');
+      }
+
+      // 2. Create a new Vault for this job using Coinbase CDP
+      // We pass the base chain ID or network ID from config if needed.
+      // Defaulting to 'base-sepolia' as per typical testnet setup.
+      const vault = await this.cdpService.createTradeVault('base-sepolia');
+      
+      // 3. Store the vault details in the database
+      await this.bidManager.storeJobVault(intentHash, vault);
+
+      // 4. Update job status
       await this.bidManager.updateJobStatus(intentHash, 'bid_selected', bidId);
-      logger.info('Bid selected', { intentHash, bidId });
+      
+      // 5. Share the vault access (private key/seed) with the winning agent via Hedera A2A
+      // In a real production system, this data should be encrypted with the Agent's public key.
+      await this.hederaService.publishMessage({
+        type: 'VAULT_ACCESS_GRANTED',
+        version: '1.0',
+        data: {
+          intentHash,
+          agentId: bid.agentId,
+          agentAddress: bid.agentAddress,
+          vaultAddress: vault.address,
+          vaultData: vault.walletData,
+          timestamp: Math.floor(Date.now() / 1000),
+        },
+      });
+
+      logger.info('Bid selected and vault created', { 
+        intentHash, 
+        bidId, 
+        vaultAddress: vault.address 
+      });
+
+      return vault.address;
     } catch (error) {
       logger.error('Failed to select bid', error);
       throw error;
@@ -132,4 +176,3 @@ export class SettlementCoordinator {
 }
 
 export default SettlementCoordinator;
-

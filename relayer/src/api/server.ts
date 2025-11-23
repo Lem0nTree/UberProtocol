@@ -99,8 +99,12 @@ export class APIServer {
           return res.status(400).json({ error: 'Invalid bidId' });
         }
 
-        await this.settlementCoordinator.selectBid(intentHash, bidId);
-        res.json({ success: true, message: 'Bid selected successfully' });
+        const vaultAddress = await this.settlementCoordinator.selectBid(intentHash, bidId);
+        res.json({ 
+          success: true, 
+          message: 'Bid selected successfully',
+          paymentAddress: vaultAddress // Return the vault address for user to pay
+        });
       } catch (error) {
         logger.error('Error selecting bid', error);
         res.status(500).json({ error: 'Internal server error' });

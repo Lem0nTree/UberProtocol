@@ -9,6 +9,7 @@ import BidManager from './managers/bidManager';
 import SettlementCoordinator from './settlement/coordinator';
 import APIServer from './api/server';
 import WSServer from './api/wsServer';
+import CDPService from './coinbase/cdpService';
 import config from './config';
 
 class UberProtocolRelayer {
@@ -18,12 +19,18 @@ class UberProtocolRelayer {
   private settlementCoordinator: SettlementCoordinator;
   private apiServer: APIServer;
   private wsServer: WSServer;
+  private cdpService: CDPService;
 
   constructor() {
     this.hederaService = new HederaA2AService();
     this.baseListener = new BaseListener();
     this.bidManager = new BidManager();
-    this.settlementCoordinator = new SettlementCoordinator(this.bidManager);
+    this.cdpService = new CDPService();
+    this.settlementCoordinator = new SettlementCoordinator(
+      this.bidManager,
+      this.cdpService,
+      this.hederaService
+    );
     this.wsServer = new WSServer();
     this.apiServer = new APIServer(this.bidManager, this.settlementCoordinator);
   }
@@ -213,4 +220,3 @@ process.on('SIGTERM', () => {
   logger.info('Shutting down gracefully...');
   process.exit(0);
 });
-
