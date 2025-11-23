@@ -1,0 +1,42 @@
+{
+  "name": "uberprotocol-contracts",
+  "version": "1.0.0",
+  "description": "UberProtocol Smart Contracts - Cross-chain Agent Coordination",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:base": "hardhat run scripts/deployBase.ts --network baseSepolia",
+    "deploy:0g": "hardhat run scripts/deploy0G.ts --network zeroGTestnet",
+    "demo": "hardhat run scripts/demo.ts",
+    "create:intent": "hardhat run scripts/utils/createJobIntent.ts",
+    "create:acceptance": "hardhat run scripts/utils/createAcceptance.ts",
+    "node": "hardhat node"
+  },
+  "keywords": [
+    "ethereum",
+    "hardhat",
+    "solidity",
+    "erc8001",
+    "erc7857",
+    "erc8004"
+  ],
+  "author": "UberProtocol Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.5",
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@typechain/ethers-v6": "^0.5.1",
+    "@typechain/hardhat": "^9.1.0",
+    "@types/node": "^20.11.5",
+    "hardhat": "^2.19.4",
+    "ts-node": "^10.9.2",
+    "typechain": "^8.3.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.1",
+    "ethers": "^6.10.0"
+  }
+}
+

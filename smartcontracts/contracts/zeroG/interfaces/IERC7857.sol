@@ -1,0 +1,140 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import "./IERC7857DataVerifier.sol";
+
+interface IERC7857 {
+    /// @notice The event emitted when an address is approved to transfer a token
+    event Approval(
+        address indexed _from,
+        address indexed _to,
+        uint256 indexed _tokenId
+    );
+
+    /// @notice The event emitted when an address is approved for all
+    event ApprovalForAll(
+        address indexed _owner,
+        address indexed _operator,
+        bool _approved
+    );
+
+    /// @notice The event emitted when an address is authorized to use a token
+    event Authorization(
+        address indexed _from,
+        address indexed _to,
+        uint256 indexed _tokenId
+    );
+
+    /// @notice The event emitted when an address is revoked from using a token
+    event AuthorizationRevoked(
+        address indexed _from,
+        address indexed _to,
+        uint256 indexed _tokenId
+    );
+
+    /// @notice The event emitted when a token is transferred
+    event Transferred(
+        uint256 _tokenId,
+        address indexed _from,
+        address indexed _to
+    );
+
+    /// @notice The event emitted when a token is cloned
+    event Cloned(
+        uint256 indexed _tokenId,
+        uint256 indexed _newTokenId,
+        address _from,
+        address _to
+    );
+
+    /// @notice The event emitted when a sealed key is published
+    event PublishedSealedKey(
+        address indexed _to,
+        uint256 indexed _tokenId,
+        bytes[] _sealedKeys
+    );
+
+    /// @notice The event emitted when a user is delegated to an assistant
+    event DelegateAccess(address indexed _user, address indexed _assistant);
+
+    /// @notice The verifier interface that this NFT uses
+    /// @return The address of the verifier contract
+    function verifier() external view returns (IERC7857DataVerifier);
+
+    /// @notice Transfer data with ownership
+    /// @param _to Address to transfer data to
+    /// @param _tokenId The token to transfer data for
+    /// @param _proofs Proofs of data available for _to
+    function iTransfer(
+        address _to,
+        uint256 _tokenId,
+        TransferValidityProof[] calldata _proofs
+    ) external;
+
+    /// @notice Clone data
+    /// @param _to Address to clone data to
+    /// @param _tokenId The token to clone data for
+    /// @param _proofs Proofs of data available for _to
+    /// @return _newTokenId The ID of the newly cloned token
+    function iClone(
+        address _to,
+        uint256 _tokenId,
+        TransferValidityProof[] calldata _proofs
+    ) external returns (uint256 _newTokenId);
+
+    /// @notice Add authorized user to group
+    /// @param _tokenId The token to add to group
+    /// @param _user The user to authorize
+    function authorizeUsage(uint256 _tokenId, address _user) external;
+
+    /// @notice Revoke authorization from a user
+    /// @param _tokenId The token to revoke authorization from
+    /// @param _user The user to revoke authorization from
+    function revokeAuthorization(uint256 _tokenId, address _user) external;
+
+    /// @notice Approve an address to transfer a token
+    /// @param _to The address to approve
+    /// @param _tokenId The token identifier
+    function approve(address _to, uint256 _tokenId) external;
+
+    /// @notice Set approval for all
+    /// @param _operator The operator
+    /// @param _approved The approval
+    function setApprovalForAll(address _operator, bool _approved) external;
+
+    /// @notice Delegate access check to an assistant
+    /// @param _assistant The assistant
+    function delegateAccess(address _assistant) external;
+
+    /// @notice Get token owner
+    /// @param _tokenId The token identifier
+    /// @return The current owner of the token
+    function ownerOf(uint256 _tokenId) external view returns (address);
+
+    /// @notice Get the authorized users of a token
+    /// @param _tokenId The token identifier
+    /// @return The current authorized users of the token
+    function authorizedUsersOf(
+        uint256 _tokenId
+    ) external view returns (address[] memory);
+
+    /// @notice Get the approved address for a token
+    /// @param _tokenId The token identifier
+    /// @return The approved address
+    function getApproved(uint256 _tokenId) external view returns (address);
+
+    /// @notice Check if an address is approved for all
+    /// @param _owner The owner
+    /// @param _operator The operator
+    /// @return The approval
+    function isApprovedForAll(
+        address _owner,
+        address _operator
+    ) external view returns (bool);
+
+    /// @notice Get the delegate access for a user
+    /// @param _user The user
+    /// @return The delegate access
+    function getDelegateAccess(address _user) external view returns (address);
+}
+
