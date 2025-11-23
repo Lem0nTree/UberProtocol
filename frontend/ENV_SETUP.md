@@ -14,6 +14,9 @@ NEXT_PUBLIC_AGENT_TASK_MANAGER_ADDRESS=
 
 # Optional: Default Chain ID (84532 for Base Sepolia, 8453 for Base Mainnet)
 NEXT_PUBLIC_CHAIN_ID=84532
+
+# Relayer API URL (default: http://localhost:3000)
+NEXT_PUBLIC_RELAYER_API_URL=http://localhost:3000
 ```
 
 ## Getting a WalletConnect Project ID

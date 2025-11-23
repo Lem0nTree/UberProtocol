@@ -11,18 +11,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Sparkles, Briefcase } from "lucide-react"
 import { VaultCard } from "./vault-card"
+import { VaultDialog } from "./vault-dialog"
 import { mockAgents } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { 
   createJobIntent, 
   createEIP712Domain, 
+  hashAgentIntent,
   type JobSpec, 
   type AgentIntent 
 } from "@/lib/intent-signing"
 import { getContractAddress, AGENT_TASK_MANAGER_ABI } from "@/lib/contracts"
 import { signTypedData } from "@wagmi/core"
 import { config } from "@/lib/wagmi"
+import { relayerAPI, type Bid, type Job } from "@/lib/api"
+import { formatEther } from "viem"
 
 const JOB_TAGS = ["NFT", "Yield Optimization", "Trading", "Derivates", "DAOs", "Bridging", "Payments", "Development"]
 
@@ -55,6 +59,15 @@ export function PraxosDashboard() {
   const [duration, setDuration] = useState("")
   const [currency, setCurrency] = useState("ETH")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  
+  // Job and bid state
+  const [currentJob, setCurrentJob] = useState<Job | null>(null)
+  const [bids, setBids] = useState<Bid[]>([])
+  const [selectedBidId, setSelectedBidId] = useState<number | null>(null)
+  const [vaultAddress, setVaultAddress] = useState<string | null>(null)
+  const [showVaultDialog, setShowVaultDialog] = useState(false)
+  const [isSelectingBid, setIsSelectingBid] = useState(false)
+  const [isSettling, setIsSettling] = useState(false)
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
@@ -163,6 +176,9 @@ export function PraxosDashboard() {
         },
       })
 
+      // Calculate intentHash (same as contract does)
+      const intentHash = hashAgentIntent(intent)
+
       // Submit to contract
       toast({
         title: "Submitting Job",
@@ -188,6 +204,12 @@ export function PraxosDashboard() {
         ] as readonly [any, any, any],
         value: budgetAmount,
       } as any)
+
+      // Store intentHash for fetching bids
+      // Start fetching bids after a short delay to allow relayer to process
+      setTimeout(() => {
+        fetchBids(intentHash)
+      }, 3000)
     } catch (error: any) {
       console.error('Error creating job intent:', error)
       toast({
@@ -199,17 +221,110 @@ export function PraxosDashboard() {
     }
   }
 
-  // Handle transaction success
-  useEffect(() => {
-    if (isSuccess && isGenerating) {
-      setIsGenerating(false)
+  // Fetch bids when job is posted
+  const fetchBids = async (intentHash: string) => {
+    try {
+      const response = await relayerAPI.getJob(intentHash)
+      setCurrentJob(response.job)
+      setBids(response.bids)
       setShowResults(true)
+    } catch (error: any) {
+      console.error('Error fetching bids:', error)
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to fetch bids",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Poll for bids after job is posted
+  useEffect(() => {
+    if (isSuccess && hash) {
+      // Extract intentHash from transaction receipt
+      // For now, we'll need to get it from the transaction or event
+      // This is a simplified approach - in production, parse the JobIntentPosted event
+      const pollForBids = async () => {
+        // Wait a bit for relayer to process
+        await new Promise(resolve => setTimeout(resolve, 3000))
+        
+        // Try to get job by checking recent transactions or using a known intentHash
+        // For now, we'll show a message to check manually
       toast({
         title: "Job Posted!",
-        description: "Your job has been posted to the network",
+          description: "Waiting for agents to submit bids...",
+        })
+      }
+      
+      pollForBids()
+    }
+  }, [isSuccess, hash, toast])
+
+  // Poll for bids periodically when we have a job
+  useEffect(() => {
+    if (!currentJob?.intentHash) return
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await relayerAPI.getBids(currentJob.intentHash)
+        setBids(response.bids)
+      } catch (error) {
+        console.error('Error polling bids:', error)
+      }
+    }, 5000) // Poll every 5 seconds
+
+    return () => clearInterval(interval)
+  }, [currentJob?.intentHash])
+
+  // Handle bid selection
+  const handleSelectBid = async (bidId: number) => {
+    if (!currentJob) return
+
+    try {
+      setIsSelectingBid(true)
+      const response = await relayerAPI.selectBid(currentJob.intentHash, bidId)
+      setSelectedBidId(bidId)
+      setVaultAddress(response.paymentAddress)
+      setShowVaultDialog(true)
+      toast({
+        title: "Bid Selected!",
+        description: "Vault created successfully",
       })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to select bid",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSelectingBid(false)
+    }
   }
-  }, [isSuccess, isGenerating, toast])
+
+  // Handle settlement
+  const handleSettle = async () => {
+    if (!currentJob || !selectedBidId) return
+
+    try {
+      setIsSettling(true)
+      const response = await relayerAPI.settleJob(currentJob.intentHash, selectedBidId)
+      toast({
+        title: "Settlement Executed!",
+        description: `Transaction: ${response.txHash}`,
+      })
+      // Refresh job status
+      const updatedJob = await relayerAPI.getJob(currentJob.intentHash)
+      setCurrentJob(updatedJob.job)
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to execute settlement",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSettling(false)
+    }
+  }
 
   const isLoading = isGenerating || isWriting || isConfirming
 
@@ -360,22 +475,131 @@ export function PraxosDashboard() {
 
         {showResults && (
           <div className="space-y-4">
+            {currentJob && (
+              <Card className="border-border/50 bg-card/50 backdrop-blur-xl">
+                <CardHeader>
+                  <CardTitle>Job Details</CardTitle>
+                  <CardDescription>
+                    Status: <Badge variant="outline">{currentJob.status}</Badge>
+                    {currentJob.vaultAddress && (
+                      <span className="ml-2">
+                        Vault: <code className="text-xs">{currentJob.vaultAddress.slice(0, 10)}...</code>
+                      </span>
+                    )}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            )}
+
             <div className="flex items-center justify-between animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <h2 className="text-xl font-semibold">Available Agents</h2>
-              <span className="text-sm text-muted-foreground">Found {mockAgents.length} matches</span>
+              <h2 className="text-xl font-semibold">Agent Bids</h2>
+              <span className="text-sm text-muted-foreground">
+                {bids.length > 0 ? `Found ${bids.length} bid${bids.length > 1 ? 's' : ''}` : 'Waiting for bids...'}
+              </span>
             </div>
+
+            {bids.length === 0 ? (
+              <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border/50 bg-card/20 p-8 text-center text-muted-foreground">
+                <Loader2 className="h-8 w-8 animate-spin opacity-50" />
+                <p className="text-sm">Waiting for agents to submit bids...</p>
+              </div>
+            ) : (
             <div className="grid gap-4">
-              {mockAgents.map((agent, index) => (
-                <div
-                  key={agent.id}
-                  className="animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both"
+                {bids.map((bid, index) => (
+                  <Card
+                    key={bid.id}
+                    className={cn(
+                      "border-border/50 bg-card/50 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both",
+                      selectedBidId === bid.id && "ring-2 ring-primary"
+                    )}
                   style={{ animationDelay: `${index * 100}ms` }}
                 >
-                  <VaultCard agent={agent} index={index} currency={currency} />
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-lg">Agent #{bid.agentId}</CardTitle>
+                        <Badge variant={selectedBidId === bid.id ? "default" : "outline"}>
+                          {selectedBidId === bid.id ? "Selected" : bid.status}
+                        </Badge>
+                      </div>
+                      <CardDescription>
+                        Address: <code className="text-xs">{bid.agentAddress.slice(0, 10)}...{bid.agentAddress.slice(-8)}</code>
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Price</p>
+                          <p className="text-lg font-semibold">
+                            {formatEther(BigInt(bid.quote.price))} {currency}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">ETA</p>
+                          <p className="text-lg font-semibold">
+                            {Math.floor(bid.quote.etaSeconds / 3600)}h
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        {selectedBidId === bid.id ? (
+                          <>
+                            {currentJob?.status === 'bid_selected' && (
+                              <Button
+                                className="flex-1"
+                                onClick={handleSettle}
+                                disabled={isSettling}
+                              >
+                                {isSettling ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Settling...
+                                  </>
+                                ) : (
+                                  "Execute Settlement"
+                                )}
+                              </Button>
+                            )}
+                            {vaultAddress && (
+                              <Button
+                                variant="outline"
+                                onClick={() => setShowVaultDialog(true)}
+                              >
+                                View Vault
+                              </Button>
+                            )}
+                          </>
+                        ) : (
+                          <Button
+                            className="w-full"
+                            onClick={() => handleSelectBid(bid.id)}
+                            disabled={isSelectingBid || currentJob?.status === 'bid_selected'}
+                          >
+                            {isSelectingBid ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Selecting...
+                              </>
+                            ) : (
+                              "Select This Bid"
+                            )}
+                          </Button>
+                        )}
                 </div>
+                    </CardContent>
+                  </Card>
               ))}
             </div>
+            )}
           </div>
+        )}
+
+        {vaultAddress && (
+          <VaultDialog
+            open={showVaultDialog}
+            onOpenChange={setShowVaultDialog}
+            vaultAddress={vaultAddress}
+            chainId={chainId}
+          />
         )}
       </div>
     </div>

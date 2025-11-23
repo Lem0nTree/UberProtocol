@@ -69,6 +69,8 @@ class SimpleBiddingAgent {
 
             if (parsedMessage.type === 'JOB_POSTED') {
               await this.handleJobPosted(parsedMessage);
+            } else if (parsedMessage.type === 'VAULT_ACCESS_GRANTED') {
+              await this.handleVaultAccessGranted(parsedMessage);
             }
           } catch (error) {
             logger.error('Failed to parse message', error);
@@ -226,6 +228,44 @@ class SimpleBiddingAgent {
     } catch (error) {
       logger.error('Failed to submit bid', error);
       throw error;
+    }
+  }
+
+  /**
+   * Handle vault access granted message
+   */
+  private async handleVaultAccessGranted(message: any): Promise<void> {
+    try {
+      const { intentHash, agentAddress, vaultAddress, vaultData } = message.data;
+
+      // Verify this message is for this agent
+      if (agentAddress.toLowerCase() !== config.agent.walletAddress.toLowerCase()) {
+        logger.debug('Vault access message not for this agent', {
+          messageAgent: agentAddress,
+          ourAgent: config.agent.walletAddress,
+        });
+        return;
+      }
+
+      logger.info('🔐 Vault access granted', {
+        intentHash,
+        vaultAddress,
+        agentAddress,
+      });
+
+      // Store vault credentials securely
+      // In production, decrypt vaultData if encrypted
+      // For now, log that we received access
+      logger.info('✅ Vault credentials received', {
+        intentHash,
+        vaultAddress,
+        // Note: In production, store vaultData securely (encrypted storage)
+      });
+
+      // Agent can now use vault to execute the job
+      // The vault address and credentials are available for job execution
+    } catch (error) {
+      logger.error('Failed to handle vault access granted', error);
     }
   }
 

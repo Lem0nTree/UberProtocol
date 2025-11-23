@@ -72,7 +72,9 @@ contract AgentTaskManager is EIP712 {
     error IntentNotFound();
     error BudgetExceeded();
     error InsufficientBalance();
+    error InsufficientTokenBalance();
     error TransferFailed();
+    error TokenTransferFailed();
 
     constructor() EIP712("ERC-8001", "1") {}
 
@@ -220,15 +222,33 @@ contract AgentTaskManager is EIP712 {
             revert BudgetExceeded();
         }
 
-        // Verify contract has sufficient balance
-        if (address(this).balance < amount) {
-            revert InsufficientBalance();
-        }
+        // Execute payment - handle ETH or ERC20
+        if (intentData.paymentToken == address(0)) {
+            // ETH payment
+            // Verify contract has sufficient balance
+            if (address(this).balance < amount) {
+                revert InsufficientBalance();
+            }
 
-        // Execute payment
-        (bool success, ) = payoutAddress.call{value: amount}("");
-        if (!success) {
-            revert TransferFailed();
+            // Execute ETH transfer
+            (bool success, ) = payoutAddress.call{value: amount}("");
+            if (!success) {
+                revert TransferFailed();
+            }
+        } else {
+            // ERC20 token payment
+            IERC20 token = IERC20(intentData.paymentToken);
+            
+            // Verify contract has sufficient token balance
+            if (token.balanceOf(address(this)) < amount) {
+                revert InsufficientTokenBalance();
+            }
+
+            // Execute ERC20 transfer
+            bool success = token.transfer(payoutAddress, amount);
+            if (!success) {
+                revert TokenTransferFailed();
+            }
         }
 
         // Mark as executed

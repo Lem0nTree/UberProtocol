@@ -7,6 +7,7 @@ import HederaA2AService from '../hedera/a2aService';
 
 const TASK_MANAGER_ABI = [
   'function settleJobWithAgent(tuple(bytes32 payloadHash, uint64 expiry, uint64 nonce, address agentId, bytes32 coordinationType, uint256 coordinationValue, address[] participants) intent, tuple(bytes32 intentHash, address participant, uint64 nonce, uint64 expiry, bytes32 conditionsHash, bytes signature) acc, address payable payoutAddress, uint256 amount, bytes32 logRootHash) external',
+  'function intents(bytes32) view returns (uint8 status, address proposer, uint256 budget, address paymentToken)',
 ];
 
 export class SettlementCoordinator {
@@ -119,6 +120,16 @@ export class SettlementCoordinator {
         agentAddress: bid.agentAddress,
       });
 
+      // Get payment token from contract
+      const intentData = await this.taskManager.intents(intentHash);
+      const paymentToken = intentData.paymentToken;
+      const isERC20 = paymentToken !== ethers.ZeroAddress;
+
+      logger.info('Settlement payment details', {
+        paymentToken: isERC20 ? paymentToken : 'ETH',
+        amount: bid.quote.price,
+      });
+
       // Prepare transaction data
       const intent = job.intent;
       const acceptance = bid.acceptance;
@@ -126,6 +137,7 @@ export class SettlementCoordinator {
       const amount = bid.quote.price;
 
       // Execute settlement transaction
+      // Note: Contract will handle ERC20 vs ETH based on paymentToken stored in intent
       const tx = await this.taskManager.settleJobWithAgent(
         intent,
         acceptance,
