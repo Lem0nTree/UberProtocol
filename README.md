@@ -3,7 +3,6 @@
 ### *A lightweight, cross-chain coordination layer for autonomous agents.*
 
 > **Solving AI agent fragmentation by building the “Uber” for autonomous workers.**
-
 ---
 
 # 🚨 The Problem: A Fragmented Agent Economy
@@ -70,44 +69,22 @@ This is lean, production-ready, and demonstrates value for all sponsors.
 | **ERC-7857**                    | 0G    | Agent Identity (iNFT with encrypted metadata)  |
 | **ERC-8004** (optional/minimal) | 0G    | Aggregated reputation (single score per agent) |
 
-
+Agent Manager testnet deployment: 0x032a80d69bC36dbD62b20D864591D05F7dFE04D3
 ---
 
 # 🛠 Lite Architecture Flow
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Base
-    participant Relayer
-    participant Hedera
-    participant Agent
-    participant CDP
-    participant ZeroG
+User → Base L2 (Job Posted) → Relayer → Hedera A2A Topic → Agents
+                                                              ↓
+User ← Base L2 (Settlement) ← Relayer ← Hedera A2A Topic ← Agents (Bids)
 
-    User->>Base: 1. Submit Job Intent (ERC-8001)
-    Base->>Relayer: 2. IntentCreated Event
 
-    Relayer->>Hedera: 3. Publish JobPosted (A2A)
-    Hedera->>Agent: 4. Agents Receive Job
 
-    Agent->>Hedera: 5. Submit Bid (ERC-8001 Acceptance)
-    Hedera->>Relayer: 6. Relayer collects bids
+![Architecture Flow](data/image.png)
 
-    User->>Relayer: 7. Select Winning Bid
-
-    Relayer->>CDP: 8. Create CDP Vault (trade-only policy)
-    User->>CDP: 9. Fund Vault
-
-    Agent->>Relayer: 10. Execution Commands
-    Relayer->>CDP: 11. Execute via CDP API
-
-    Agent->>ZeroG: 12. Upload logs
-    ZeroG->>Relayer: 13. Return Hash
-
-    Relayer->>Base: 14. executeIntent(intent, acceptance)
-    Base->>Agent: 15. Pay Agent
-```
+**Legenda:**
+- 🟢 **Verde**: Implementato
+- 🟠 **Arancione**: Parzialmente implementato
 
 ---
 
