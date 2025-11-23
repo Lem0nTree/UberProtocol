@@ -1,0 +1,44 @@
+{
+  "name": "uberprotocol-relayer",
+  "version": "1.0.0",
+  "description": "UberProtocol Relayer - Bridges Base L2, Hedera A2A, and 0G",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:migrate": "ts-node src/db/migrate.ts",
+    "test": "jest"
+  },
+  "keywords": ["hedera", "a2a", "blockchain", "agents"],
+  "author": "UberProtocol Team",
+  "license": "MIT",
+  "dependencies": {
+    "@hashgraph/sdk": "^2.49.0",
+    "hedera-agent-kit": "^3.0.0",
+    "@langchain/core": "^0.3.0",
+    "langchain": "^0.3.0",
+    "ethers": "^6.10.0",
+    "express": "^4.18.2",
+    "ws": "^8.16.0",
+    "pg": "^8.11.3",
+    "dotenv": "^16.4.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "winston": "^3.11.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.5",
+    "@types/pg": "^8.11.0",
+    "@types/ws": "^8.5.10",
+    "@types/cors": "^2.8.17",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.3",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.11"
+  }
+}
+

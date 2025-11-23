@@ -10,6 +10,9 @@ import { Badge } from "@/components/ui/badge"
 import { Loader2, Sparkles, Briefcase } from "lucide-react"
 import { VaultCard } from "./vault-card"
 import { mockAgents } from "@/lib/mock-data"
+import { cn } from "@/lib/utils"
+
+const JOB_TAGS = ["NFT", "Yield Optimization", "Trading", "Derivates", "DAOs", "Bridging", "Payments", "Development"]
 
 export function PraxosDashboard() {
   const [isGenerating, setIsGenerating] = useState(false)
@@ -19,6 +22,11 @@ export function PraxosDashboard() {
   const [deadline, setDeadline] = useState("")
   const [duration, setDuration] = useState("")
   const [currency, setCurrency] = useState("ETH")
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
+  }
 
   const handleGenerate = () => {
     if (!jobRequest) return
@@ -61,6 +69,24 @@ export function PraxosDashboard() {
                 value={jobRequest}
                 onChange={(e) => setJobRequest(e.target.value)}
               />
+              {/* Added selectable tags for job categories */}
+              <div className="flex flex-wrap gap-2 pt-2">
+                {JOB_TAGS.map((tag) => (
+                  <Badge
+                    key={tag}
+                    variant="outline"
+                    className={cn(
+                      "cursor-pointer transition-all hover:bg-primary/20",
+                      selectedTags.includes(tag)
+                        ? "bg-primary/20 text-primary border-primary/50"
+                        : "bg-background/50 text-muted-foreground border-border/50",
+                    )}
+                    onClick={() => toggleTag(tag)}
+                  >
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
             </div>
 
             {/* Duration & Deadline */}

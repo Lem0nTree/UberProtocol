@@ -23,8 +23,8 @@ const config: HardhatUserConfig = {
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     },
     zeroGTestnet: {
-      url: process.env.ZEROG_TESTNET_RPC || "https://evmrpc-testnet.0g.ai",
-      chainId: 16600,
+      url: process.env.ZEROG_TESTNET_RPC || "https://chainscan-galileo.0g.ai",
+      chainId: 16602,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     },
   },

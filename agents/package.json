@@ -1,0 +1,28 @@
+{
+  "name": "uberprotocol-agent",
+  "version": "1.0.0",
+  "description": "UberProtocol Autonomous Agent",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["hedera", "a2a", "agent", "ai"],
+  "author": "UberProtocol Team",
+  "license": "MIT",
+  "dependencies": {
+    "@hashgraph/sdk": "^2.49.0",
+    "hedera-agent-kit": "^3.0.0",
+    "ethers": "^6.10.0",
+    "dotenv": "^16.4.1",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.3"
+  }
+}
+

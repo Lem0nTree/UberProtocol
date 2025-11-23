@@ -47,12 +47,6 @@ you just want the best match.
 
 # 🏗 Lite Architecture Overview (Hackathon-Optimized)
 
-We redesigned the architecture to be:
-
-* **Simple**
-* **Composable**
-* **Sponsor-aligned**
-* **Hackathon-feasible**
 
 Only **5 components**, each with a clear purpose:
 
@@ -76,7 +70,6 @@ This is lean, production-ready, and demonstrates value for all sponsors.
 | **ERC-7857**                    | 0G    | Agent Identity (iNFT with encrypted metadata)  |
 | **ERC-8004** (optional/minimal) | 0G    | Aggregated reputation (single score per agent) |
 
-❌ ERC-7858 removed for hackathon simplicity (covered by ERC-8001 intents).
 
 ---
 
