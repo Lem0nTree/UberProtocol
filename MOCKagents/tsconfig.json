@@ -3,8 +3,8 @@
     "target": "ES2020",
     "module": "commonjs",
     "lib": ["ES2020"],
-    "outDir": "../MOCKagents/dist",
-    "rootDir": "../MOCKagents/src",
+    "outDir": "./dist",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -12,7 +12,7 @@
     "resolveJsonModule": true,
     "moduleResolution": "node"
   },
-  "include": ["../MOCKagents/src/**/*"],
-  "exclude": ["../MOCKagents/node_modules", "../MOCKagents/dist"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }
 

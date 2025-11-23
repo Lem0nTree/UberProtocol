@@ -3,7 +3,15 @@ import { ethers } from "hardhat";
 async function main() {
   console.log("🚀 Deploying UberProtocol contracts to Base Sepolia...\n");
 
-  const [deployer] = await ethers.getSigners();
+  const signers = await ethers.getSigners();
+  if (signers.length === 0) {
+    throw new Error(
+      "No signers available. Please set PRIVATE_KEY in your .env file.\n" +
+      "Example: PRIVATE_KEY=your_private_key_here"
+    );
+  }
+
+  const [deployer] = signers;
   console.log("Deployer address:", deployer.address);
   console.log("Balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "ETH\n");
 
@@ -16,10 +24,10 @@ async function main() {
   console.log("✅ AgentTaskManager deployed to:", taskManagerAddress, "\n");
 
   // Fund the contract with some ETH for demo settlements
-  console.log("📝 Funding AgentTaskManager with 0.1 ETH for demo...");
+  console.log("📝 Funding AgentTaskManager with 0.0000001 ETH for demo...");
   const fundTx = await deployer.sendTransaction({
     to: taskManagerAddress,
-    value: ethers.parseEther("0.1")
+    value: ethers.parseEther("0.0000001")
   });
   await fundTx.wait();
   console.log("✅ AgentTaskManager funded\n");
@@ -32,7 +40,7 @@ async function main() {
   console.log("🎉 Deployment Summary (Base Sepolia)");
   console.log("=" .repeat(60));
   console.log("AgentTaskManager:    ", taskManagerAddress);
-  console.log("Contract Balance:    ", "0.1 ETH");
+  console.log("Contract Balance:    ", "0.0000001 ETH");
   console.log("EIP-712 Domain:");
   console.log("  Name:              ", domainSeparator.name);
   console.log("  Version:           ", domainSeparator.version);

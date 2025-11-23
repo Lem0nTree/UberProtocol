@@ -1,6 +1,11 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { headers } from 'next/headers'
+import { cookieToInitialState } from 'wagmi'
+import { config } from '@/lib/wagmi'
+import { Providers } from '@/components/providers'
+import { Toaster } from '@/components/ui/toaster'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -29,15 +34,23 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const initialState = cookieToInitialState(
+    config,
+    (await headers()).get('cookie')
+  )
+
   return (
     <html lang="en">
       <body className={`font-sans antialiased`}>
-        {children}
+        <Providers initialState={initialState}>
+          {children}
+        </Providers>
+        <Toaster />
         <Analytics />
       </body>
     </html>

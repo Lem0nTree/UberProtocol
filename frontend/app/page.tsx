@@ -1,8 +1,10 @@
+'use client'
+
 import { PraxosDashboard } from "@/components/dashboard/praxos-dashboard"
 import { AppSidebar } from "@/components/dashboard/app-sidebar"
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
-import { Button } from "@/components/ui/button"
-import { Wallet } from 'lucide-react'
+import { ConnectButton } from "@/components/wallet/connect-button"
+import { ChainSwitcher } from "@/components/wallet/chain-switcher"
 
 export default function Page() {
   return (
@@ -15,10 +17,10 @@ export default function Page() {
               <SidebarTrigger className="-ml-1" />
               <h1 className="text-lg font-semibold tracking-tight">Dashboard</h1>
             </div>
-            <Button variant="outline" className="gap-2 rounded-full border-primary/20 hover:bg-primary/10 hover:text-primary">
-              <Wallet className="h-4 w-4" />
-              Connect Wallet
-            </Button>
+            <div className="flex items-center gap-2">
+              <ChainSwitcher />
+              <ConnectButton />
+            </div>
           </header>
           <main className="flex flex-1 flex-col gap-4 p-4 pt-0">
             <PraxosDashboard />

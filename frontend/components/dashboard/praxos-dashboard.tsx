@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt, useReadContract } from "wagmi"
+import { parseEther } from "viem"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -11,10 +13,40 @@ import { Loader2, Sparkles, Briefcase } from "lucide-react"
 import { VaultCard } from "./vault-card"
 import { mockAgents } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
+import { 
+  createJobIntent, 
+  createEIP712Domain, 
+  type JobSpec, 
+  type AgentIntent 
+} from "@/lib/intent-signing"
+import { getContractAddress, AGENT_TASK_MANAGER_ABI } from "@/lib/contracts"
+import { signTypedData } from "@wagmi/core"
+import { config } from "@/lib/wagmi"
 
 const JOB_TAGS = ["NFT", "Yield Optimization", "Trading", "Derivates", "DAOs", "Bridging", "Payments", "Development"]
 
 export function PraxosDashboard() {
+  const { address, isConnected } = useAccount()
+  const chainId = useChainId()
+  const { toast } = useToast()
+  const { writeContract, data: hash, isPending: isWriting } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+    hash,
+  })
+
+  // Read agent nonce from contract
+  const contractAddress = isConnected ? getContractAddress() : undefined
+  const { data: agentNonce } = useReadContract({
+    address: contractAddress,
+    abi: AGENT_TASK_MANAGER_ABI,
+    functionName: 'agentNonces',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address && !!contractAddress,
+    },
+  })
+
   const [isGenerating, setIsGenerating] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [jobRequest, setJobRequest] = useState("")
@@ -28,17 +60,158 @@ export function PraxosDashboard() {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
   }
 
-  const handleGenerate = () => {
-    if (!jobRequest) return
+  const handleGenerate = async () => {
+    if (!jobRequest) {
+      toast({
+        title: "Error",
+        description: "Please provide a job request",
+        variant: "destructive",
+      })
+      return
+    }
 
+    if (!isConnected || !address) {
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet to create a job",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
     setIsGenerating(true)
     setShowResults(false)
-    // Simulate API call
-    setTimeout(() => {
+
+      // Get contract address
+      if (!contractAddress) {
+        throw new Error('Contract address not available')
+      }
+
+      // Parse budget (assuming ETH for now)
+      const budgetAmount = budget ? parseEther(budget) : parseEther("0")
+
+      // Calculate deadline from date input or duration
+      let deadlineTimestamp: bigint
+      if (deadline) {
+        deadlineTimestamp = BigInt(Math.floor(new Date(deadline).getTime() / 1000))
+      } else if (duration) {
+        const now = BigInt(Math.floor(Date.now() / 1000))
+        const durationMap: Record<string, number> = {
+          "1h": 3600,
+          "24h": 86400,
+          "7d": 604800,
+          "30d": 2592000,
+          "ongoing": 31536000, // 1 year
+        }
+        deadlineTimestamp = now + BigInt(durationMap[duration] || 86400)
+      } else {
+        deadlineTimestamp = BigInt(Math.floor(Date.now() / 1000) + 86400) // Default 24h
+      }
+
+      // Create job spec
+      const jobSpec: JobSpec = {
+        topic: selectedTags.length > 0 ? selectedTags.join(",") : "general",
+        ipfsUri: `ipfs://placeholder-${Date.now()}`, // TODO: Upload to IPFS
+        budget: budgetAmount,
+        deadline: deadlineTimestamp,
+      }
+
+      // Get current nonce from contract
+      const currentNonce = agentNonce ? BigInt(agentNonce.toString()) : BigInt(0)
+      const nonce = currentNonce + BigInt(1)
+
+      // Create intent
+      const intent = createJobIntent(
+        address,
+        jobSpec,
+        [address], // Participants - just the user for now
+        nonce
+      )
+
+      // Create EIP-712 domain
+      const domain = createEIP712Domain(chainId, contractAddress)
+
+      // Sign the intent
+      toast({
+        title: "Signing Intent",
+        description: "Please sign the message in your wallet",
+      })
+
+      const signature = await signTypedData(config, {
+        domain,
+        types: {
+          AgentIntent: [
+            { name: 'payloadHash', type: 'bytes32' },
+            { name: 'expiry', type: 'uint64' },
+            { name: 'nonce', type: 'uint64' },
+            { name: 'agentId', type: 'address' },
+            { name: 'coordinationType', type: 'bytes32' },
+            { name: 'coordinationValue', type: 'uint256' },
+            { name: 'participants', type: 'address[]' },
+          ],
+        },
+        primaryType: 'AgentIntent',
+        message: {
+          payloadHash: intent.payloadHash,
+          expiry: intent.expiry,
+          nonce: intent.nonce,
+          agentId: intent.agentId,
+          coordinationType: intent.coordinationType,
+          coordinationValue: intent.coordinationValue,
+          participants: intent.participants,
+        },
+      })
+
+      // Submit to contract
+      toast({
+        title: "Submitting Job",
+        description: "Submitting your job intent to the blockchain...",
+      })
+
+      writeContract({
+        address: contractAddress,
+        abi: AGENT_TASK_MANAGER_ABI,
+        functionName: 'postJobIntent',
+        args: [
+          [
+            intent.payloadHash,
+            intent.expiry,
+            intent.nonce,
+            intent.agentId,
+            intent.coordinationType,
+            intent.coordinationValue,
+            intent.participants,
+          ],
+          signature as `0x${string}`,
+          [jobSpec.topic, jobSpec.ipfsUri, jobSpec.budget, jobSpec.deadline],
+        ] as readonly [any, any, any],
+        value: budgetAmount,
+      } as any)
+    } catch (error: any) {
+      console.error('Error creating job intent:', error)
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to create job intent",
+        variant: "destructive",
+      })
+      setIsGenerating(false)
+    }
+  }
+
+  // Handle transaction success
+  useEffect(() => {
+    if (isSuccess && isGenerating) {
       setIsGenerating(false)
       setShowResults(true)
-    }, 2000)
+      toast({
+        title: "Job Posted!",
+        description: "Your job has been posted to the network",
+      })
   }
+  }, [isSuccess, isGenerating, toast])
+
+  const isLoading = isGenerating || isWriting || isConfirming
 
   return (
     <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
@@ -144,12 +317,12 @@ export function PraxosDashboard() {
               className="w-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_20px_rgba(74,222,128,0.2)]"
               size="lg"
               onClick={handleGenerate}
-              disabled={isGenerating || !jobRequest}
+              disabled={isLoading || !jobRequest || !isConnected}
             >
-              {isGenerating ? (
+              {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Matching Agents...
+                  {isWriting ? "Signing..." : isConfirming ? "Confirming..." : "Matching Agents..."}
                 </>
               ) : (
                 "Find Agents"
