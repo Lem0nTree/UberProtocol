@@ -59,7 +59,13 @@ export function hashJobSpec(spec: JobSpec): `0x${string}` {
 
   return keccak256(
     encodeAbiParameters(
-      ['bytes32', 'bytes32', 'bytes32', 'uint256', 'uint64'],
+      [
+        { type: 'bytes32' },
+        { type: 'bytes32' },
+        { type: 'bytes32' },
+        { type: 'uint256' },
+        { type: 'uint64' },
+      ],
       [
         JOBSPEC_TYPEHASH,
         keccak256(stringToHex(spec.topic)),
@@ -77,7 +83,7 @@ export function hashJobSpec(spec: JobSpec): `0x${string}` {
 export function hashParticipants(participants: Address[]): `0x${string}` {
   return keccak256(
     encodeAbiParameters(
-      participants.map(() => 'address' as const),
+      participants.map(() => ({ type: 'address' })),
       participants
     )
   )
@@ -95,7 +101,16 @@ export function hashAgentIntent(intent: AgentIntent): `0x${string}` {
 
   return keccak256(
     encodeAbiParameters(
-      ['bytes32', 'bytes32', 'uint64', 'uint64', 'address', 'bytes32', 'uint256', 'bytes32'],
+      [
+        { type: 'bytes32' },
+        { type: 'bytes32' },
+        { type: 'uint64' },
+        { type: 'uint64' },
+        { type: 'address' },
+        { type: 'bytes32' },
+        { type: 'uint256' },
+        { type: 'bytes32' },
+      ],
       [
         AGENT_INTENT_TYPEHASH,
         intent.payloadHash,
@@ -178,6 +193,3 @@ export function createJobIntent(
     participants: sortedParticipants,
   }
 }
-
-
-

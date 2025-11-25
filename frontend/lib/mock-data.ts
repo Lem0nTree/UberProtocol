@@ -1,4 +1,7 @@
 import type { AssetType } from "@/components/dashboard/asset-icon"
+import type { Bid, Job } from "./api"
+import type { JobSpec } from "./intent-signing"
+import { formatEther, parseEther } from "viem"
 
 export interface Asset {
   name: string
@@ -196,7 +199,7 @@ export const mockAgents: Agent[] = [
     description: "High-performance general purpose agent optimized for complex reasoning tasks and data analysis.",
     score: 98,
     price: "0.05 ETH",
-    chain: "Ethereum",
+    chain: "ZeroGravity",
     tags: ["TEE", "New"],
     details: {
       modelWeight: "70B",
@@ -211,7 +214,7 @@ export const mockAgents: Agent[] = [
       "Privacy-preserving computation agent specializing in sensitive data processing within trusted execution environments.",
     score: 95,
     price: "120 USDC",
-    chain: "Arbitrum",
+    chain: "ZeroGravity",
     tags: ["Confidential Computing", "TEE"],
     details: {
       modelWeight: "13B",
@@ -226,7 +229,7 @@ export const mockAgents: Agent[] = [
       "Specialized code generation and auditing agent with extensive knowledge of Solidity and Rust smart contracts.",
     score: 92,
     price: "0.08 ETH",
-    chain: "Optimism",
+    chain: "ZeroGravity",
     tags: [],
     details: {
       modelWeight: "34B",
@@ -240,7 +243,7 @@ export const mockAgents: Agent[] = [
     description: "Real-time market analysis agent capable of high-frequency data processing and trend prediction.",
     score: 88,
     price: "50 USDC",
-    chain: "Base",
+    chain: "ZeroGravity",
     tags: ["New"],
     details: {
       modelWeight: "7B",
@@ -249,3 +252,56 @@ export const mockAgents: Agent[] = [
     },
   },
 ]
+
+export function createMockJob(intentHash: string, userAddress: string, jobSpec: JobSpec): Job {
+  return {
+    id: Math.floor(Math.random() * 1000),
+    intentHash,
+    jobSpec: {
+      topic: jobSpec.topic,
+      ipfsUri: jobSpec.ipfsUri,
+      budget: formatEther(jobSpec.budget),
+      deadline: Number(jobSpec.deadline),
+    },
+    intent: {}, // Placeholder
+    userAddress,
+    status: 'pending', // or open
+    createdAt: new Date().toISOString(),
+  }
+}
+
+export function createMockBids(intentHash: string, budget: bigint): Bid[] {
+  const budgetEth = Number(formatEther(budget))
+  
+  return mockAgents.map((agent, index) => {
+    // Generate price between 80% and 95% of budget
+    const discount = 0.8 + (Math.random() * 0.15)
+    const priceEth = (budgetEth * discount).toFixed(6)
+    const priceWei = parseEther(priceEth).toString()
+    
+    // ETA between 1h and 24h in seconds
+    const etaSeconds = 3600 + Math.floor(Math.random() * 82800)
+    
+    return {
+      id: index + 1,
+      intentHash,
+      agentId: Number(agent.id),
+      agentAddress: `0x${Math.random().toString(16).slice(2, 42).padEnd(40, '0')}`,
+      acceptance: {
+        intentHash,
+        participant: `0x${Math.random().toString(16).slice(2, 42).padEnd(40, '0')}`,
+        nonce: Math.floor(Math.random() * 1000),
+        expiry: Math.floor(Date.now() / 1000) + 86400,
+        conditionsHash: `0x${Math.random().toString(16).slice(2, 66)}`,
+        signature: `0x${Math.random().toString(16).slice(2, 132)}`,
+      },
+      quote: {
+        price: priceWei,
+        etaSeconds,
+        detailsUri: `ipfs://quote-${index}`,
+      },
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    }
+  })
+}

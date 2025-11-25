@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Sparkles, Briefcase } from "lucide-react"
+import { Loader2, Sparkles, Briefcase, ChevronRight, Cpu, Calendar, Scale, Database } from "lucide-react"
 import { VaultCard } from "./vault-card"
 import { VaultDialog } from "./vault-dialog"
 import { mockAgents } from "@/lib/mock-data"
@@ -22,11 +22,12 @@ import {
   type JobSpec, 
   type AgentIntent 
 } from "@/lib/intent-signing"
-import { getContractAddress, AGENT_TASK_MANAGER_ABI } from "@/lib/contracts"
+import { getContractAddress, AGENT_TASK_MANAGER_ABI, ERC20_ABI, getUSDCAddress } from "@/lib/contracts"
 import { signTypedData } from "@wagmi/core"
 import { config } from "@/lib/wagmi"
 import { relayerAPI, type Bid, type Job } from "@/lib/api"
 import { formatEther } from "viem"
+import { USE_MOCK_MODE, generateMockIntentHash, MOCK_AGENT_PAYMENT_ADDRESS, MOCK_TOKEN_ADDRESS } from "@/lib/mock-utils"
 
 const JOB_TAGS = ["NFT", "Yield Optimization", "Trading", "Derivates", "DAOs", "Bridging", "Payments", "Development"]
 
@@ -68,6 +69,12 @@ export function PraxosDashboard() {
   const [showVaultDialog, setShowVaultDialog] = useState(false)
   const [isSelectingBid, setIsSelectingBid] = useState(false)
   const [isSettling, setIsSettling] = useState(false)
+  const [settlementTxHash, setSettlementTxHash] = useState<`0x${string}` | undefined>(undefined)
+
+  // Wait for settlement transaction confirmation
+  const { isLoading: isSettlementConfirming, isSuccess: isSettlementConfirmed } = useWaitForTransactionReceipt({
+    hash: settlementTxHash,
+  })
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
@@ -93,8 +100,8 @@ export function PraxosDashboard() {
     }
 
     try {
-    setIsGenerating(true)
-    setShowResults(false)
+      setIsGenerating(true)
+      setShowResults(false)
 
       // Get contract address
       if (!contractAddress) {
@@ -176,40 +183,65 @@ export function PraxosDashboard() {
         },
       })
 
-      // Calculate intentHash (same as contract does)
-      const intentHash = hashAgentIntent(intent)
+      // Calculate intentHash
+      let intentHash: string
+      
+      if (USE_MOCK_MODE) {
+        // Deterministic hash for mock mode
+        intentHash = generateMockIntentHash(address, nonce)
+        
+        // Create mock job in store
+        await relayerAPI.createMockJob(intentHash, address, jobSpec)
+        
+        toast({
+          title: "Submitting Job",
+          description: "Broadcasting job intent to agent network...",
+        })
+        
+        // Simulate waiting
+        setTimeout(() => {
+          fetchBids(intentHash)
+          setIsGenerating(false)
+        }, 2500)
+        
+      } else {
+        // Actual contract interaction
+        intentHash = hashAgentIntent(intent)
+        
+        // Submit to contract
+        toast({
+          title: "Submitting Job",
+          description: "Submitting your job intent to the blockchain...",
+        })
 
-      // Submit to contract
-      toast({
-        title: "Submitting Job",
-        description: "Submitting your job intent to the blockchain...",
-      })
+        writeContract({
+          address: contractAddress,
+          abi: AGENT_TASK_MANAGER_ABI,
+          functionName: 'postJobIntent',
+          args: [
+            [
+              intent.payloadHash,
+              intent.expiry,
+              intent.nonce,
+              intent.agentId,
+              intent.coordinationType,
+              intent.coordinationValue,
+              intent.participants,
+            ],
+            signature as `0x${string}`,
+            [jobSpec.topic, jobSpec.ipfsUri, jobSpec.budget, jobSpec.deadline],
+          ] as readonly [any, any, any],
+          value: budgetAmount,
+        } as any)
+      }
 
-      writeContract({
-        address: contractAddress,
-        abi: AGENT_TASK_MANAGER_ABI,
-        functionName: 'postJobIntent',
-        args: [
-          [
-            intent.payloadHash,
-            intent.expiry,
-            intent.nonce,
-            intent.agentId,
-            intent.coordinationType,
-            intent.coordinationValue,
-            intent.participants,
-          ],
-          signature as `0x${string}`,
-          [jobSpec.topic, jobSpec.ipfsUri, jobSpec.budget, jobSpec.deadline],
-        ] as readonly [any, any, any],
-        value: budgetAmount,
-      } as any)
-
-      // Store intentHash for fetching bids
-      // Start fetching bids after a short delay to allow relayer to process
-      setTimeout(() => {
-        fetchBids(intentHash)
-      }, 3000)
+      // Store intentHash for fetching bids if not handled in mock block
+      if (!USE_MOCK_MODE) {
+        setTimeout(() => {
+          fetchBids(intentHash)
+        }, 3000)
+      }
+      
     } catch (error: any) {
       console.error('Error creating job intent:', error)
       toast({
@@ -235,23 +267,21 @@ export function PraxosDashboard() {
         description: error?.message || "Failed to fetch bids",
         variant: "destructive",
       })
+    } finally {
+      setIsGenerating(false)
     }
   }
 
   // Poll for bids after job is posted
   useEffect(() => {
-    if (isSuccess && hash) {
-      // Extract intentHash from transaction receipt
-      // For now, we'll need to get it from the transaction or event
-      // This is a simplified approach - in production, parse the JobIntentPosted event
+    if (isSuccess && hash && !USE_MOCK_MODE) {
+      // Only for real transactions
       const pollForBids = async () => {
         // Wait a bit for relayer to process
         await new Promise(resolve => setTimeout(resolve, 3000))
         
-        // Try to get job by checking recent transactions or using a known intentHash
-        // For now, we'll show a message to check manually
-      toast({
-        title: "Job Posted!",
+        toast({
+          title: "Job Posted!",
           description: "Waiting for agents to submit bids...",
         })
       }
@@ -276,19 +306,76 @@ export function PraxosDashboard() {
     return () => clearInterval(interval)
   }, [currentJob?.intentHash])
 
+  // Show vault dialog when settlement transaction is confirmed (real transactions)
+  useEffect(() => {
+    if (!USE_MOCK_MODE && isSettlementConfirmed && vaultAddress) {
+      // Update local state immediately to reflect settlement
+      if (currentJob && !currentJob.settlementTxHash && settlementTxHash) {
+          const updatedJob = { ...currentJob, settlementTxHash: settlementTxHash, status: 'settled' }
+          setCurrentJob(updatedJob)
+      }
+
+      // Also try to refresh from backend
+      if (currentJob?.intentHash) {
+        relayerAPI.getJob(currentJob.intentHash).then((response) => {
+           // Only update if backend has newer info
+           if (response.job.settlementTxHash) {
+               setCurrentJob(response.job)
+           }
+        })
+      }
+      
+      if (!showVaultDialog) {
+        setShowVaultDialog(true)
+        toast({
+            title: "Settlement Confirmed!",
+            description: "Your private vault is now available",
+        })
+      }
+    }
+  }, [isSettlementConfirmed, vaultAddress, showVaultDialog, toast, currentJob, settlementTxHash])
+
   // Handle bid selection
   const handleSelectBid = async (bidId: number) => {
     if (!currentJob) return
 
     try {
       setIsSelectingBid(true)
+      
       const response = await relayerAPI.selectBid(currentJob.intentHash, bidId)
       setSelectedBidId(bidId)
       setVaultAddress(response.paymentAddress)
-      setShowVaultDialog(true)
+      
+      // Prompt for USDC transfer
+      if (address) {
+        const bid = bids.find(b => b.id === bidId)
+        // Use price from bid or mock amount
+        const amount = bid ? BigInt(bid.quote.price) : parseEther("100") 
+        const usdcAddress = MOCK_TOKEN_ADDRESS // Use mock token address
+        const paymentReceiver = MOCK_AGENT_PAYMENT_ADDRESS
+        
+        toast({
+          title: "Transfer Required",
+          description: "Please confirm USDC transfer to the agent vault",
+        })
+        
+        writeContract({
+          address: usdcAddress as `0x${string}`,
+          abi: ERC20_ABI,
+          functionName: 'transfer',
+          args: [paymentReceiver, amount],
+        })
+        
+        toast({
+          title: "Transaction Sent",
+          description: "USDC transfer initiated",
+        })
+      }
+      
+      // Don't show vault dialog yet - wait for settlement confirmation
       toast({
         title: "Bid Selected!",
-        description: "Vault created successfully",
+        description: "Please execute settlement to access the vault",
       })
     } catch (error: any) {
       toast({
@@ -308,25 +395,53 @@ export function PraxosDashboard() {
     try {
       setIsSettling(true)
       const response = await relayerAPI.settleJob(currentJob.intentHash, selectedBidId)
+      
       toast({
-        title: "Settlement Executed!",
-        description: `Transaction: ${response.txHash}`,
+        title: "Settlement Submitted",
+        description: "Waiting for transaction confirmation...",
       })
-      // Refresh job status
-      const updatedJob = await relayerAPI.getJob(currentJob.intentHash)
-      setCurrentJob(updatedJob.job)
+      
+      // Set the transaction hash to track confirmation
+      if (response.txHash) {
+        setSettlementTxHash(response.txHash as `0x${string}`)
+        
+        // In mock mode, simulate transaction confirmation
+        if (USE_MOCK_MODE) {
+          // Simulate waiting for confirmation
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          // Refresh job status
+          const updatedJob = await relayerAPI.getJob(currentJob.intentHash)
+          setCurrentJob(updatedJob.job)
+          
+          // Show vault dialog immediately after mock confirmation
+          if (updatedJob.job.settlementTxHash && vaultAddress) {
+            setShowVaultDialog(true)
+            toast({
+              title: "Settlement Confirmed!",
+              description: "Your private vault is now available",
+            })
+          }
+        }
+        // For real transactions, useWaitForTransactionReceipt will handle the confirmation
+        // and the useEffect will show the dialog automatically when isSettlementConfirmed becomes true
+      } else {
+        // If no txHash, refresh job and check status
+        const updatedJob = await relayerAPI.getJob(currentJob.intentHash)
+        setCurrentJob(updatedJob.job)
+      }
     } catch (error: any) {
       toast({
         title: "Error",
         description: error?.message || "Failed to execute settlement",
         variant: "destructive",
       })
+      setSettlementTxHash(undefined)
     } finally {
       setIsSettling(false)
     }
   }
 
-  const isLoading = isGenerating || isWriting || isConfirming
+  const isLoading = isGenerating || (isWriting && !USE_MOCK_MODE) || isConfirming
 
   return (
     <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
@@ -437,7 +552,7 @@ export function PraxosDashboard() {
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {isWriting ? "Signing..." : isConfirming ? "Confirming..." : "Matching Agents..."}
+                  {isWriting && !USE_MOCK_MODE ? "Signing..." : isConfirming ? "Confirming..." : "Matching Agents..."}
                 </>
               ) : (
                 "Find Agents"
@@ -505,89 +620,137 @@ export function PraxosDashboard() {
               </div>
             ) : (
             <div className="grid gap-4">
-                {bids.map((bid, index) => (
+                {bids.map((bid, index) => {
+                  const agent = mockAgents.find(a => a.id === bid.agentId.toString())
+                  if (!agent) return null
+
+                  const priceEth = formatEther(BigInt(bid.quote.price))
+                  const displayPrice = `${priceEth} ${currency}`
+
+                  return (
                   <Card
                     key={bid.id}
                     className={cn(
-                      "border-border/50 bg-card/50 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both",
-                      selectedBidId === bid.id && "ring-2 ring-primary"
+                      "group relative overflow-hidden border-border/50 bg-card/50 transition-all hover:border-primary/50 hover:bg-card/80 animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both",
+                      selectedBidId === bid.id && "ring-2 ring-primary border-primary"
                     )}
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">Agent #{bid.agentId}</CardTitle>
-                        <Badge variant={selectedBidId === bid.id ? "default" : "outline"}>
-                          {selectedBidId === bid.id ? "Selected" : bid.status}
-                        </Badge>
-                      </div>
-                      <CardDescription>
-                        Address: <code className="text-xs">{bid.agentAddress.slice(0, 10)}...{bid.agentAddress.slice(-8)}</code>
-                      </CardDescription>
+                    style={{ animationDelay: `${index * 100}ms` }}
+                  >
+                    <div className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-primary to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+
+                    <CardHeader className="flex flex-col gap-4 pb-2 md:flex-row md:items-start md:justify-between md:gap-6">
+                        <div className="space-y-1 md:flex-1">
+                        <div className="flex items-center gap-2">
+                            <h3 className="font-semibold leading-none tracking-tight text-lg">{agent.name}</h3>
+                            {agent.tags.includes("New") && (
+                            <Badge variant="secondary" className="bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">
+                                New
+                            </Badge>
+                            )}
+                            {agent.tags.includes("TEE") && (
+                            <Badge variant="outline" className="border-green-500/20 text-green-500">
+                                TEE
+                            </Badge>
+                            )}
+                            {agent.tags.includes("Confidential Computing") && (
+                            <Badge variant="outline" className="border-purple-500/20 text-purple-500">
+                                Confidential
+                            </Badge>
+                            )}
+                        </div>
+                        <p className="text-sm text-muted-foreground line-clamp-2">{agent.description}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono mt-1">
+                             <span className="text-muted-foreground/50">ADDRESS</span>
+                             <span>{bid.agentAddress.slice(0, 6)}...{bid.agentAddress.slice(-4)}</span>
+                        </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4 md:flex-col md:items-end md:justify-start md:gap-1 md:text-right">
+                        <div className="flex flex-col items-start md:items-end">
+                            <div className="text-xl font-bold text-primary">{displayPrice}</div>
+                            <span className="text-xs font-normal text-muted-foreground">Job Quote</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs font-medium text-green-500">
+                            <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                            Score: {agent.score}/100
+                        </div>
+                        </div>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Price</p>
-                          <p className="text-lg font-semibold">
-                            {formatEther(BigInt(bid.quote.price))} {currency}
-                          </p>
+
+                    <CardContent>
+                        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                        <div className="space-y-3 w-full sm:w-auto">
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-1.5">
+                                <Scale className="h-3.5 w-3.5" />
+                                <span>{agent.details.modelWeight}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <Database className="h-3.5 w-3.5" />
+                                <span>{agent.details.size}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <Calendar className="h-3.5 w-3.5" />
+                                <span>{agent.details.date}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 ml-auto sm:ml-0">
+                                <Cpu className="h-3.5 w-3.5" />
+                                <span>{agent.chain}</span>
+                            </div>
+                            </div>
                         </div>
-                        <div>
-                          <p className="text-sm text-muted-foreground">ETA</p>
-                          <p className="text-lg font-semibold">
-                            {Math.floor(bid.quote.etaSeconds / 3600)}h
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        {selectedBidId === bid.id ? (
-                          <>
-                            {currentJob?.status === 'bid_selected' && (
-                              <Button
-                                className="flex-1"
-                                onClick={handleSettle}
-                                disabled={isSettling}
-                              >
-                                {isSettling ? (
-                                  <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Settling...
-                                  </>
-                                ) : (
-                                  "Execute Settlement"
+
+                        <div className="flex gap-2 w-full sm:w-auto">
+                            {selectedBidId === bid.id ? (
+                            <>
+                                {currentJob?.status === 'bid_selected' && !currentJob?.settlementTxHash && !isSettlementConfirmed && (
+                                <Button
+                                    className="flex-1 sm:flex-none"
+                                    onClick={handleSettle}
+                                    disabled={isSettling || isSettlementConfirming}
+                                >
+                                    {isSettling || isSettlementConfirming ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        {isSettlementConfirming ? "Confirming..." : "Settling..."}
+                                    </>
+                                    ) : (
+                                    "Execute Settlement"
+                                    )}
+                                </Button>
                                 )}
-                              </Button>
-                            )}
-                            {vaultAddress && (
-                              <Button
-                                variant="outline"
-                                onClick={() => setShowVaultDialog(true)}
-                              >
-                                View Vault
-                              </Button>
-                            )}
-                          </>
-                        ) : (
-                          <Button
-                            className="w-full"
-                            onClick={() => handleSelectBid(bid.id)}
-                            disabled={isSelectingBid || currentJob?.status === 'bid_selected'}
-                          >
-                            {isSelectingBid ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Selecting...
-                              </>
+                                {vaultAddress && (currentJob?.settlementTxHash || isSettlementConfirmed) && (
+                                <Button
+                                    variant="outline"
+                                    className="flex-1 sm:flex-none"
+                                    onClick={() => setShowVaultDialog(true)}
+                                >
+                                    View Vault
+                                </Button>
+                                )}
+                            </>
                             ) : (
-                              "Select This Bid"
+                            <Button 
+                                className="w-full sm:w-auto group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                                onClick={() => handleSelectBid(bid.id)}
+                                disabled={isSelectingBid || currentJob?.status === 'bid_selected'}
+                            >
+                                {isSelectingBid ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                <>
+                                    Select Agent
+                                    <ChevronRight className="ml-2 h-4 w-4" />
+                                </>
+                                )}
+                            </Button>
                             )}
-                          </Button>
-                        )}
-                </div>
+                        </div>
+                        </div>
                     </CardContent>
                   </Card>
-              ))}
+                  )
+                })}
             </div>
             )}
           </div>
